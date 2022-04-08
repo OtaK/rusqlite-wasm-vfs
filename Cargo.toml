@@ -1,0 +1,16 @@
+[package]
+name = "rusqlite-wasi-vfs"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+thiserror = "1.0"
+eyre = "0.6"
+wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
+
+[dependencies.web-sys]
+version = "0.3"
+features = ["Window", "Event", "DomStringList", "IdbDatabase", "IdbFactory", "IdbObjectStore", "IdbOpenDbRequest"]
+
+[dependencies.libsqlite3-sys]
+path = "../rusqlite/libsqlite3-sys"
