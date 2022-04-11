@@ -1,6 +1,7 @@
 use crate::{WasiVFSError, WasiVFSResult};
 use libsqlite3_sys::{sqlite3_file, sqlite3_file_sqlite3_io_methods};
 use wasm_bindgen::{prelude::*, JsCast};
+use web_sys::{IdbObjectStore, IdbTransaction};
 
 #[derive(Debug)]
 #[repr(transparent)]
@@ -30,29 +31,32 @@ impl std::future::Future for IndexedDBOpenFuture {
 #[derive(Debug, Clone)]
 #[repr(C)]
 pub struct IndexedDBFile {
-    sqlite3fs: libsqlite3_sys::sqlite3_file,
+    sqlite3fs_methods: sqlite3_file_sqlite3_io_methods,
+    sqlite3fs: sqlite3_file,
     idb: std::sync::Arc<std::sync::RwLock<Option<web_sys::IdbDatabase>>>,
 }
 
 impl IndexedDBFile {
     pub async fn open<S: AsRef<str>>(filename: S) -> WasiVFSResult<Self> {
         let window = web_sys::window().ok_or(WasiVFSError::NoSupport)?;
-        let idb = window
+        let idb_factory = window
             .indexed_db()
             .map_err(|e| WasiVFSError::WebError(e.into_serde().unwrap()))?
             .ok_or(WasiVFSError::NoSupport)?;
 
-        let inner = std::sync::Arc::new(std::sync::RwLock::new(None));
+        let idb = std::sync::Arc::new(std::sync::RwLock::new(None));
 
-        let idb_inner = std::sync::Arc::clone(&inner);
+        let cvar = std::sync::Arc::new((std::sync::Mutex::new(false), std::sync::Condvar::new()));
+        let cvar_inner = std::sync::Arc::clone(&cvar);
 
-        let idb_open_req = idb
+        let idb_open_req = idb_factory
             .open(filename.as_ref())
             .map_err(|e| WasiVFSError::WebError(e.into_serde().unwrap()))?;
 
-        let on_success = Closure::once(Box::new(move |event: web_sys::Event| {
-            let db: web_sys::IdbDatabase = event.target().unwrap().unchecked_into();
-            *idb_inner.write().unwrap() = Some(db);
+        let on_success = Closure::once(Box::new(move |_event: web_sys::Event| {
+            let (lock, cvar) = &*cvar_inner;
+            *lock.lock().unwrap() = true;
+            cvar.notify_one();
         }));
         let on_upgrade = Closure::once(Box::new(move |event: web_sys::Event| {
             let db: web_sys::IdbDatabase = event.target().unwrap().unchecked_into();
@@ -64,19 +68,59 @@ impl IndexedDBFile {
         idb_open_req.set_onsuccess(Some(on_success.as_ref().unchecked_ref()));
         idb_open_req.set_onupgradeneeded(Some(on_upgrade.as_ref().unchecked_ref()));
 
+        let (lock, cvar) = &*cvar;
+        let mut started = lock.lock().unwrap();
+        while !*started {
+            started = cvar.wait(started).unwrap();
+        }
+
+        let db: web_sys::IdbDatabase = idb_open_req.result().unwrap().unchecked_into();
+        *idb.write().unwrap() = Some(db);
+
         // TODO: Maybe do this outside of this file? No idea
         let sqlite3fs_methods = sqlite3_file_sqlite3_io_methods {
             iVersion: 1,
-            xRead: Some(<IndexedDBFile as std::io::Read>::read),
+            xRead: todo!(),
+            xClose: todo!(),
+            xWrite: todo!(),
+            xTruncate: todo!(),
+            xSync: todo!(),
+            xFileSize: todo!(),
+            xLock: todo!(),
+            xUnlock: todo!(),
+            xCheckReservedLock: todo!(),
+            xFileControl: todo!(),
+            xSectorSize: todo!(),
+            xDeviceCharacteristics: todo!(),
         };
 
         Ok(IndexedDBOpenFuture(Self {
             sqlite3fs: sqlite3_file {
-                pMethods: sqlite3fs_methods,
+                pMethods: &sqlite3fs_methods,
             },
-            idb: inner,
+            sqlite3fs_methods,
+            idb,
         })
         .await?)
+    }
+
+    #[inline]
+    fn get_store<S: AsRef<str>>(
+        &self,
+        store: S,
+    ) -> WasiVFSResult<(IdbObjectStore, IdbTransaction)> {
+        let transaction = self
+            .idb
+            .read()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .transaction_with_str(store.as_ref())
+            .unwrap();
+
+        let store = transaction.object_store(store.as_ref()).unwrap();
+
+        Ok((store, transaction))
     }
 }
 
