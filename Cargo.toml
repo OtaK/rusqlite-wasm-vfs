@@ -10,7 +10,10 @@ wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
 
 [dependencies.web-sys]
 version = "0.3"
-features = ["Window", "Event", "DomStringList", "IdbDatabase", "IdbFactory", "IdbObjectStore", "IdbTransaction", "IdbOpenDbRequest"]
+features = ["console", "Window", "Event", "DomStringList", "IdbDatabase", "IdbFactory", "IdbObjectStore", "IdbTransaction", "IdbOpenDbRequest"]
 
-[dependencies.libsqlite3-sys]
-path = "../rusqlite/libsqlite3-sys"
+# [dependencies.libsqlite3-sys]
+# path = "../rusqlite/libsqlite3-sys"
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"
