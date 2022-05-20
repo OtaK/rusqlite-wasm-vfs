@@ -1,6 +1,6 @@
 #[derive(Debug, thiserror::Error)]
-pub enum WasiVFSError {
-    #[error("Cannot instantiate WASI File shim because we're not in a web context with IndexedDB")]
+pub enum WasmVFSError {
+    #[error("Cannot instantiate WASM File shim because we're not in a web context with IndexedDB")]
     NoSupport,
     #[error("One of the inner locks is poisoned.")]
     PoisonedLock,
@@ -12,4 +12,4 @@ pub enum WasiVFSError {
     Other(#[from] eyre::Report),
 }
 
-pub type WasiVFSResult<T> = Result<T, WasiVFSError>;
+pub type WasmVFSResult<T> = Result<T, WasmVFSError>;
